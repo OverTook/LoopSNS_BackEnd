@@ -6,6 +6,7 @@ from firebase_admin import firestore
 from google.cloud.firestore_v1.field_path import FieldPath
 from google.cloud.firestore_v1.base_query import FieldFilter
 from datetime import datetime
+import time
 
 # 마커 블루프린트 작성
 marker_routes = Blueprint('marker', __name__)
@@ -14,6 +15,7 @@ marker_routes = Blueprint('marker', __name__)
 @marker_routes.route('/get_marker_timeline', methods=['GET'])
 def get_marker_timeline():
     try:
+        start_time = time.time() #   
         # 앱으로부터 데이터 수신
         articles = request.args.getlist('articles')
         
@@ -30,12 +32,53 @@ def get_marker_timeline():
         # 쿼리 분할을 통해 일단은 30개를 최대로 정하고
         articles_count = [articles[i:i + max] for i in range(0, len(articles), max)]
         
+        split_time = time.time() #
+        print(f"Time to split articles: {split_time - start_time} seconds") #
+                
         # Firestore에서 데이터 가져오기
         articles_list = []
         for count in articles_count:
+            docs_start_time = time.time() #
             docs = db.collection('articles').where(FieldPath.document_id(), "in", count).stream()
+            docs_end_time = time.time() # 
+            print(f"Time to fetch docs for count {count}: {docs_end_time - docs_start_time} seconds") #
+            
             for doc in docs:
+                doc_start_time = time.time() #
                 article_data = doc.to_dict()
+                
+                # 댓글 수 가져오기
+                comments_start_time = time.time()
+                '''
+                comments_ref = doc.reference.collection('comments')
+                count_query = comments_ref.count()
+                query_result = count_query.get()
+                comment_count = query_result[0][0].value
+                '''
+                comment_count = article_data.get('comment_counts')
+                
+                comments_end_time = time.time()
+                print(f"Time to fetch comments count for doc {doc.id}: {comments_end_time - comments_start_time} seconds")
+                
+                
+
+                # 좋아요 수 가져오기
+                likes_start_time = time.time()
+                '''
+                liked_users_ref = doc.reference.collection('liked_users')
+                count_query_liked = liked_users_ref.count()
+                query_result_liked = count_query_liked.get()
+                like_count = query_result_liked[0][0].value
+                '''
+                like_count = article_data.get('like_count')
+                
+                likes_end_time = time.time()
+                print(f"Time to fetch likes count for doc {doc.id}: {likes_end_time - likes_start_time} seconds")
+
+                
+                doc_end_time = time.time()
+                print(f"Time to process doc {doc.id}: {doc_end_time - doc_start_time} seconds")
+                
                 article_item = {
                     'uid': doc.id,
                     'writer': article_data.get('writer', ''),
@@ -44,14 +87,16 @@ def get_marker_timeline():
                     'cat1': article_data.get('cat1', ''),
                     'cat2': article_data.get('cat2', ''),
                     'keywords': article_data.get('keywords', []),
-                    'time': article_data.get('time', ''),
-                    'comment_count': article_data.get('comment_count', 0),
-                    'like_count': article_data.get('like_count', 0),
+                    'time': article_data.get('time', None).strftime("%Y-%m-%d %H:%M"),
+                    'comment_count': comment_count,
+                    'like_count': like_count,
                     'image_urls': article_data.get('image_urls', [])
                 }
                 articles_list.append(article_item)
+        processing_time = time.time() # 
+        print(f"Total time to process articles: {processing_time - split_time} seconds") #
 
-        time_list = sorted(articles_list, key=lambda x: datetime.strptime(x['time'], "%Y-%m-%d %H:%M"), reverse=True)
+        time_list = sorted(articles_list, key=lambda x: x['time'], reverse=True)
         return jsonify({
             'success': True,
             'msg': '',

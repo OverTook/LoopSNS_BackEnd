@@ -32,6 +32,7 @@ from app.routes.category import category_routes
 from app.routes.comment import comment_routes
 from app.routes.like import like_routes
 from app.routes.marker import marker_routes
+from app.routes.fcm_token import fcm_token_routes
 
 app.register_blueprint(article_routes)
 app.register_blueprint(auth_routes)
@@ -39,3 +40,4 @@ app.register_blueprint(category_routes)
 app.register_blueprint(comment_routes)
 app.register_blueprint(like_routes)
 app.register_blueprint(marker_routes)
+app.register_blueprint(fcm_token_routes)

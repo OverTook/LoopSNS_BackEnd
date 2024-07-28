@@ -14,18 +14,23 @@ def add_article_like(user_id):
     try:
         article_id = request.json.get('article_id') 
         increment = request.json.get('like')
-
-        #좋아요 누르면 true, 취소하면 false
-        if increment.lower() == 'true':
-            increment = True
-        elif increment.lower() == 'false':
-            increment = False
         
+        print(article_id)
+        print(increment)
+
         like_ref = db.collection('articles').document(article_id)
         article_doc = like_ref.get()
+
+        # Check if the article document exists
+        if not article_doc.exists:
+            return jsonify({
+                'success': False,
+                'msg': 'Article not found'
+            }), 404
         
+        article_data = article_doc.to_dict()
+
         # 특정 사용자 데이터 참조 후 가져오기 (사용자에게 좋아요한 게시글 목록 추가 또는 제거)
-        # 해당 자료 https://www.googlecloudcommunity.com/gc/Databases/Using-Firestore-with-Python-Web-and-Flutter-Clients/m-p/609316
         user_ref = db.collection('users').document(user_id)
         user_doc = user_ref.get()
         
@@ -36,11 +41,11 @@ def add_article_like(user_id):
         if increment:
             if not liked_user_doc.exists:
                 liked_user_ref.set({})
-                if 'like_count' not in article_doc.to_dict():
+                if 'like_count' not in article_data:
                     like_ref.set({'like_count': 1}, merge=True)
                 else:
                     like_ref.update({
-                        'like_count': Increment(1)
+                        'like_count': firestore.Increment(1)
                     })
                 if user_doc.exists:
                     user_ref.update({
@@ -55,7 +60,7 @@ def add_article_like(user_id):
             if liked_user_doc.exists:
                 liked_user_ref.delete()
                 like_ref.update({
-                    'like_count': Increment(-1)
+                    'like_count': firestore.Increment(-1)
                 })
                 if user_doc.exists:
                     user_ref.update({
@@ -66,15 +71,11 @@ def add_article_like(user_id):
         updated_like_ref = like_ref.get()
         like_count = updated_like_ref.to_dict().get('like_count', 0)
 
-        liked_users_snapshot = like_ref.collection('liked_users').get()
-        liked_user_ids = [doc.id for doc in liked_users_snapshot]
-
-        response = {
+        return jsonify({
             'success': True,
-            'msg': 'Like updated successfully'
-        }
-
-        return jsonify(response), 200
+            'msg': 'Like updated successfully',
+            'like_count': like_count
+        }), 200
 
     except Exception as e:
         print(f"Exception: {e}")
@@ -84,11 +85,11 @@ def add_article_like(user_id):
             'articles': []
         }
         return jsonify(response), 500
-
 # 내가 좋아요 누른 게시글 목록 확인하는 부분
-@like_routes.route('/user_liked_article_list', methods=['GET'])
+@like_routes.route('/get_like_article_list', methods=['GET'])
 @validation_token()
 def user_liked_article_list(user_id):
+    last_article_id = request.args.get('last_article_id')
     try:
         user_ref = db.collection('users').document(user_id)
         user_doc = user_ref.get()
@@ -104,14 +105,52 @@ def user_liked_article_list(user_id):
                 'articles': []
             }), 200
 
+        limit = 3  # 가져올 게시글 개수
+
+        query = db.collection('articles').where(FieldPath.document_id(), "in", liked_article_ids).order_by("time", direction=firestore.Query.DESCENDING)
+
+        # last_article_id가 있을 경우 해당 문서 다음부터 limit 만큼 탐색
+        if last_article_id:
+            last_article_ref = db.collection('articles').document(last_article_id)
+            last_article_snapshot = last_article_ref.get()
+            if last_article_snapshot.exists:
+                query = query.start_after(last_article_snapshot).limit(limit)
+            else:
+                return jsonify({
+                    'success': False, 
+                    'msg': '잘못된 last_article_id 입니다.'
+                }), 400
+        else:
+            query = query.limit(limit)
+
+        docs = query.stream()
+
         articles_list = []
-        docs = db.collection('articles').where(FieldPath.document_id(), "in", liked_article_ids).stream()
+
+        # 작성자의 uid를 auth에서 가져오기
+        try:
+            user = auth.get_user(user_id)
+            picture = user.photo_url
+            nickname = user.display_name
+        except Exception as e:
+            print("Error Occured!!", e)
+            picture = None
+            nickname = None
 
         for doc in docs:
             article_data = doc.to_dict()
             article_item = {
                 'uid': doc.id,
-                'contents': article_data.get('contents', '')
+                'contents': article_data.get('contents', ''),
+                'cat1': article_data.get('cat1', ''),
+                'cat2': article_data.get('cat2', ''),
+                'keywords': article_data.get('keywords', []),
+                'time': article_data.get('time', None).strftime("%Y-%m-%d %H:%M"),
+                'like_count': article_data.get('like_count', 0),
+                'image_urls': article_data.get('image_urls', []),
+                'user_img': picture,
+                'writer': nickname,
+                'can_delete': True
             }
             articles_list.append(article_item)
 
