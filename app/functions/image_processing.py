@@ -34,15 +34,3 @@ def mosaic(image_bytes):
     _, output_img = cv2.imencode('.jpg', img)
     return output_img.tobytes()
 
-# 이미지 업로드 함수
-def upload_image(image_bytes):
-    try:
-        image_filename = f'{uuid.uuid4()}.jpg'
-        blob = bucket.blob(f'images/{image_filename}')
-        blob.upload_from_string(image_bytes, content_type='image/jpeg')
-        blob.make_public()
-        return blob.public_url
-    
-    except Exception as e:
-        print(f"Image upload failed: {e}")
-        return None    

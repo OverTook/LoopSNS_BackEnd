@@ -10,7 +10,7 @@ like_routes = Blueprint('like', __name__)
 # 좋아요 기능 추가
 @like_routes.route('/add_article_like', methods=['POST'])
 @validation_token()
-def add_article_like(uid, user_id):
+def add_article_like(user_id):
     try:
         article_id = request.json.get('article_id') 
         increment = request.json.get('like')
@@ -88,7 +88,7 @@ def add_article_like(uid, user_id):
 # 내가 좋아요 누른 게시글 목록 확인하는 부분
 @like_routes.route('/user_liked_article_list', methods=['GET'])
 @validation_token()
-def user_liked_article_list(uid, user_id):
+def user_liked_article_list(user_id):
     try:
         user_ref = db.collection('users').document(user_id)
         user_doc = user_ref.get()
@@ -130,3 +130,4 @@ def user_liked_article_list(uid, user_id):
             'articles': []
         }
         return jsonify(response), 500
+    

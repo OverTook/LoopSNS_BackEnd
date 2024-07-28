@@ -40,21 +40,24 @@ def login():
         if email:
             #유저를 로그인/회원가입 진행
             user = get_or_create_user(email)
-            c_user = user.uid
-            
-            doc_ref = db.collection('users').document(c_user)
-            doc_ref.set({
-                'nickname': nickname,
-                'picture': picture
-            })
+            user = auth.update_user(
+                user.uid,
+                display_name=nickname,
+                photo_url=picture
+            )
+            #doc_ref = db.collection('users').document(c_user)
+            #doc_ref.set({
+            #    'nickname': nickname,
+            #    'picture': picture
+            #})
             
             #계정 기반으로 토큰 발행
             custom_token = create_custom_token(user.uid)      
             
             return jsonify({
                 'success': True, 
-                'msg': '', 'token': 
-                custom_token.decode('utf-8')
+                'msg': '', 
+                'token': custom_token.decode('utf-8')
             }), 200
         else:
             return jsonify({
@@ -63,4 +66,8 @@ def login():
                 'token': ''
             }), 401
     except Exception as e:
-        return jsonify({'success': False, 'msg': str(e), 'token': ''}), 200
+        return jsonify({
+            'success': False, 
+            'msg': str(e)
+        }), 500
+    

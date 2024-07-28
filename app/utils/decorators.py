@@ -30,7 +30,6 @@ def validation_token() -> object:
                 })
             
             # uid를 kwargs에 추가
-            kwargs['uid'] = uid
             kwargs['user_id'] = user_id
             return f(*args, **kwargs)
         return wrapped

@@ -21,7 +21,7 @@ def cluster_articles(articles):
         # bandwidth 값 설정, 0.1로 무조건 설정해서 값이 0으로 떨어지지 않도록 유지. 0으로 떨어지면 오류 발생함.
         bandwidth = estimate_bandwidth(coordinates, quantile=0.3, n_samples=len(coordinates))
         if bandwidth <= 0:
-            bandwidth = 0.1  # 기본 bandwidth 값 설정
+            bandwidth = 1.0  # 기본 bandwidth 값 설정
         
         # MeanShift 클러스터링 부분
         mean_shift = MeanShift(bandwidth=bandwidth)

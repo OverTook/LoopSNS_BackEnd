@@ -17,35 +17,22 @@ def get_category():
         images = request.files.getlist('images')
         contents = request.form.get('contents')
         
-        if contents.strip():  # 내용이 있는지 확인
-            contents = contents.replace(" ", "")
-        else:
-            contents = "no_content"
+        if len(contents.strip()) < 16:  # 내용이 15자 이하인지 판단
+            return jsonify({"success": False, "msg": "get category", "categories": [], "keywords": []})
         
+        
+        print(images)
         print(contents)
         
-        # 각 이미지에 대해 모자이크 적용
+        
         image_urls = []
-        for image in images:
-            image_bytes = image.read()
-            mosaic_image_bytes = mosaic(image_bytes)
-            
-            image_url = upload_image(mosaic_image_bytes)
-            if image_url:
+        if images:  # 이미지가 있는 경우에만 처리
+            for image in images:
+                image_bytes = image.read()
+                mosaic_image_bytes = mosaic(image_bytes)
+
+                image_url = mosaic_image_bytes
                 image_urls.append(image_url)
-
-        doc_data = {
-            'contents': contents,
-            'image_urls': image_urls,
-        }
-
-        db.collection('save_articles').add(doc_data)
-        
-        
-        image = images[0]
-        
-        if image:
-            image_by = image.read()
         else:
             image_bytes = None
         result_text = process_image_and_text(image_bytes, contents if contents else " ")
@@ -55,18 +42,12 @@ def get_category():
         # 카테고리와 키워드 추출
         c1, c2, k1, k2, k3, k4 = category_and_keyword(result_text)
         
-        
         # 지금 카테고리가 제대로 분류되지 않았을 경우엔 무조건 기타, 잡화로 선정되도록 함.
-        if bool(c1):
-            c1 = c1
-        else:
+        if not c1:
             c1 = "기타"
         
-        if bool(c2):
-            c2 = c2
-        else:
+        if not c2:
             c2 = "잡화"
-        
         
         print(c1)
         print(c2)
@@ -77,4 +58,5 @@ def get_category():
         
         return jsonify({"success": True, "msg": "get category", "categories": [c1, c2], "keywords": [k1, k2, k3, k4]})
     except Exception as e:
-        return jsonify({"error": str(e)})
+        return jsonify({"error": str(e)}), 500
+    
