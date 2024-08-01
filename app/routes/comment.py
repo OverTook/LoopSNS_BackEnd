@@ -154,7 +154,7 @@ def get_comment_list(user_id):
     sub_comment_id = ""
     
     #메인 댓글만 받아옴
-    query = comment_collection.where('tag_id', '==', '').order_by("time", direction=firestore.Query.DESCENDING)
+    query = comment_collection.where('tag_id', '==', '').order_by("time", direction=firestore.Query.ASCENDING)
 
     total_comments = []
     
@@ -206,7 +206,7 @@ def get_comment_list(user_id):
             query = query.start_after(last_comment)
             
             #메인 댓글 ID가 왔으니 해당 메인 댓글의 서브 댓글부터 조회한다.
-            sub_query = comment_collection.where('tag_id', '==', main_comment_id).order_by("time", direction=firestore.Query.DESCENDING)
+            sub_query = comment_collection.where('tag_id', '==', main_comment_id).order_by("time", direction=firestore.Query.ASCENDING)
             sub_comments = sub_query.stream()
             
             for sub_comment in sub_comments:
@@ -229,7 +229,7 @@ def get_comment_list(user_id):
                 query = query.start_after(last_main_comment_snapshot)
                 
                 #마지막 대댓글 이후부터 조회
-                sub_query = comment_collection.where('tag_id', '==', main_comment_id).order_by("time", direction=firestore.Query.DESCENDING).start_after(last_comment)
+                sub_query = comment_collection.where('tag_id', '==', main_comment_id).order_by("time", direction=firestore.Query.ASCENDING).start_after(last_comment)
                 sub_comments = sub_query.stream()
                 for sub_comment in sub_comments:
                     sub_comment_item = fetch_user_info(sub_comment)
@@ -262,7 +262,7 @@ def get_comment_list(user_id):
                 'comments': total_comments
             }), 200
         
-        sub_query = comment_collection.where('tag_id', '==', comment_item['comment_id']).order_by("time", direction=firestore.Query.DESCENDING)
+        sub_query = comment_collection.where('tag_id', '==', comment_item['comment_id']).order_by("time", direction=firestore.Query.ASCENDING)
         sub_comments = sub_query.stream()
         for sub_comment in sub_comments:
             sub_comment_item = fetch_user_info(sub_comment)
@@ -281,44 +281,4 @@ def get_comment_list(user_id):
         'success': True,
         'msg': '댓글 반환에 성공했습니다.',
         'comments': total_comments
-    }), 200
-
-
-
-
-    # 메인 댓글과 대댓글을 저장할 딕셔너리 및 리스트
-    main_comments = []
-    reply_comments = {}
-    main_comment_ids = set()  # 메인 댓글 ID를 추적하기 위한 집합
-
-    # 병렬로 댓글 작성자 정보 가져오기
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        future_to_comment = {executor.submit(fetch_user_info, comment): comment for comment in comments}
-        for future in concurrent.futures.as_completed(future_to_comment):
-            comment_item = future.result()
-            if comment_item:
-                if comment_item['tag_id'] is None:
-                    main_comments.append(comment_item)
-                else:
-                    if comment_item['tag_id'] not in reply_comments:
-                        reply_comments[comment_item['tag_id']] = []
-                    reply_comments[comment_item['tag_id']].append(comment_item)
-
-    # 메인 댓글을 시간순 정렬 (최신순)
-    main_comments.sort(key=lambda x: x['time'], reverse=True)
-
-    # 메인 댓글과 대댓글 병합
-    comment_list = []
-    for main_comment in main_comments:
-        comment_list.append(main_comment)
-        if main_comment['comment_id'] in reply_comments:
-            # 대댓글을 시간순 정렬 (최신순)
-            sorted_replies = sorted(reply_comments[main_comment['comment_id']], key=lambda x: x['time'], reverse=True)
-            comment_list.extend(sorted_replies)
-    
-    print(comment_list)
-    return jsonify({
-        'success': True,
-        'msg': '댓글 반환에 성공했습니다.',
-        'comments': comment_list
     }), 200
