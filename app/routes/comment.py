@@ -17,6 +17,7 @@ comment_routes = Blueprint('comment', __name__)
 def create_comment(user_id):
     try:
         article_id = request.json.get('uid')
+        comment_id = request.json.get('comment_id')
         contents = request.json.get('contents')
         time_utc = datetime.now(pytz.timezone('UTC'))
 
