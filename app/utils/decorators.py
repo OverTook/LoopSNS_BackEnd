@@ -1,3 +1,4 @@
+from app.utils.exceptions import *
 from functools import wraps
 from flask import request, jsonify
 from firebase_admin import auth
@@ -32,5 +33,20 @@ def validation_token() -> object:
             # uid를 kwargs에 추가
             kwargs['user_id'] = user_id
             return f(*args, **kwargs)
+        return wrapped
+    return decorator
+
+def error_handler() -> object:
+    def decorator(f):
+        @wraps(f)
+        def wrapped(*args, **kwargs):
+            try:
+                return f(*args, **kwargs)
+            # handle different types of errors and return messages accordingly with status code
+            except AppException as e:
+                return jsonify({
+                    "success": False,
+                    "msg": e.err_msg,
+                }), e.status_code
         return wrapped
     return decorator

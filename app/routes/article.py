@@ -1,6 +1,19 @@
+# 
+# <article.py>
+# 
+# 게시글과 관련관 API 엔드포인트를 관리합니다.
+#
+# 주요 기능:
+# - 게시글 작성 처리
+# - 게시글 삭제 처리
+# - 게시글 상세 보기
+# - 특정 유저가 작성한 게시글 목록 받아오기
+#
+
+# import libraries
 from app import db, bucket
 from app.utils.decorators import *
-import concurrent.futures
+from app.utils.exceptions import *
 from firebase_admin import firestore
 from flask import Blueprint, request, jsonify
 from datetime import datetime
@@ -12,6 +25,7 @@ article_routes = Blueprint('article', __name__)
 
 # 게시글 작성 처리
 @article_routes.route('/add_article', methods=['POST'])
+@error_handler()
 @validation_token()
 def create_article(user_id):
     try:
@@ -23,9 +37,6 @@ def create_article(user_id):
         contents = request.form.get('contents')
         lat = request.form.get('lat')
         lng = request.form.get('lng')
-        
-        # Firestore에 타임스탬프로 저장
-        #time_utc = firestore.SERVER_TIMESTAMP
 
         #UTC 저장
         time_utc = datetime.now(pytz.timezone('UTC'))
@@ -62,8 +73,6 @@ def create_article(user_id):
             'user_id': user_id
         }
         
-
-
         _, city_ref = db.collection('articles').add(doc_data)
         doc_data['uid'] = city_ref.id
         doc_data['writer'] = nickname
@@ -120,33 +129,22 @@ def delete_article(article_id, user_id):
     }), 200
 
 # 게시글 자세히 보기 + 댓글 반환
-@article_routes.route('/get_article_detail', methods=['GET'])
+@article_routes.route('/get_article', methods=['GET'])
 @validation_token()
 def get_article_detail(user_id):
     # 게시글 id 받아오기
     article_id = request.args.get('uid')
-    print("게시글 id", article_id)
-        
+
     if not article_id:
         return jsonify({
             'success': False,
             'msg': '게시글 ID가 제공되지 않았습니다.'
         }), 400
-
+    
     # articles 컬렉션에서 article_id에 해당하는 게시글 가져오기 
     article_ref = db.collection("articles").document(article_id)
     article = article_ref.get()
-    
-    # articles 컬렉션 안에 있는 article_id에 해당하는 게시글의 모든 댓글 id 가져와서 보내는 부분
-    # comments 컬렉션의 모든 문서 가져오기
-    comments_ref = article_ref.collection('comments')
-    comments = comments_ref.stream()
 
-    # 모든 comment 문서의 ID를 저장할 리스트
-    comment_ids = []
-    for comment in comments:
-        comment_ids.append(comment.id)
-    
     if not article.exists:
         return jsonify({
             'success': False,
@@ -161,29 +159,17 @@ def get_article_detail(user_id):
         user = auth.get_user(article_data['user_id'])
         picture = user.photo_url
         nickname = user.display_name
+        print("USER:", picture, nickname)
     except Exception as e:
         print("Error Occured!!", e)
         picture = None
         nickname = None
-        
-    # 여기 수정 중 송주훈    
-    time = article_data.get('time')
-    time_utc = time.strftime('%Y-%m-%d %H:%M')
     
-    #'time': article_data.get('time', ''),
-    
-    print("-"*50)
-    print(len(comment_ids))
-    print("-"*50)
-
     # 좋아요 여부 확인
     liked_users_ref = article_ref.collection('liked_users')
     liked_users = liked_users_ref.stream()
-    liked_user_ids = []
-    for liked_user in liked_users:
-        liked_user_ids.append(liked_user.id)
+    liked_user_ids = [liked_user.id for liked_user in liked_users]
     print(liked_user_ids)
-    
     
     # 가져온 게시글에서 내용 뽑아내기
     article_item = {
@@ -192,9 +178,9 @@ def get_article_detail(user_id):
         'cat1': article_data.get('cat1', ''),
         'cat2': article_data.get('cat2', ''),
         'keywords': article_data.get('keywords', []),
-        'time': time_utc,
-        'comment_count': len(comment_ids),
-        'like_count': article_data.get('like_count', 0),
+        'time': article_data.get('time').strftime('%Y-%m-%d %H:%M'),
+        'comment_counts': article_data.get('comment_counts', 0),
+        'like_count': article_data.get('like_count'),
         'image_urls': article_data.get('image_urls', []),
         'user_img': picture,
         'writer': nickname,
@@ -202,64 +188,11 @@ def get_article_detail(user_id):
         'can_delete': True if article_data['user_id'] == user_id else False
     }
     
-    # 모든 댓글을 저장하기 위한 리스트
-    comment_list = []
-     
-    # 특정 문서의 comments 하위 컬렉션 참조 및 최신순 정렬
-    comments_ref = db.collection('articles').document(article_id).collection('comments')
-
-    # comments 컬렉션의 모든 문서 가져오기
-    comments = comments_ref.stream()
-
-    # 댓글 작성자 정보를 병렬로 가져오기 위한 함수
-    def fetch_user_info(comment):
-        comment_data = comment.to_dict()
-        comment_id = comment.id
-        comment_user_id = comment_data.get('user_id', '')
-        if not comment_user_id:
-            return None
-        
-        # 작성자의 uid를 auth에서 가져오기
-        try:
-            user = auth.get_user(comment_user_id)
-            comment_item = {
-                'time': comment_data.get('time', None).strftime("%Y-%m-%d %H:%M"),
-                'comment_id': comment_id,
-                'contents': comment_data.get('contents', ''),
-                'user_img': user.photo_url,
-                'writer': user.display_name,
-                'can_delete': True if user_id == comment_user_id else False
-            }
-        except Exception as e:
-            print("Error Occured!!", e)
-            comment_item = {
-                'time': comment_data.get('time', None).strftime("%Y-%m-%d %H:%M"),
-                'comment_id': comment_id,
-                'contents': comment_data.get('contents', ''),
-                'user_img': None,
-                'writer': None,
-                'can_delete': True if user_id == comment_user_id else False
-            }
-        return comment_item
-
-    # 병렬로 댓글 작성자 정보 가져오기
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        future_to_comment = {executor.submit(fetch_user_info, comment): comment for comment in comments}
-        for future in concurrent.futures.as_completed(future_to_comment):
-            comment_item = future.result()
-            if comment_item:
-                comment_list.append(comment_item)
-
-    comment_list = sorted(comment_list, key=lambda x: x['time'], reverse=True)   
-    print(comment_list)
-
     return jsonify({
         'success': True,
-        'msg': '게시글 및 댓글 목록 반환에 성공했습니다.',
-        'article': article_item,
-        'comments': comment_list
+        'msg': '게시글 반환에 성공했습니다.',
+        'article': article_item
     }), 200
-
 
 # 특정 유저가 작성한 게시글 목록 받아오기
 # 여기 부분에서 리스트를 반환할 때 최신 순으로 위에서부터
@@ -273,7 +206,7 @@ def get_user_article_list(user_id):
     query = articles_ref.where('user_id', '==', user_id)
     
     # 차후 20으로 수정
-    limit = 3
+    limit = 5
     
     # last_article_id가 있을 경우 해당 문서 다음부터 limit 만큼 탐색
     if last_article_id:
@@ -294,18 +227,20 @@ def get_user_article_list(user_id):
 
     # 결과를 저장할 리스트
     articles_list = []
+
+    # 작성자의 uid를 auth에서 가져오기
+    try:
+        user = auth.get_user(user_id)
+        picture = user.photo_url
+        nickname = user.display_name
+    except Exception as e:
+        print("Error Occured!!", e)
+        picture = None
+        nickname = None
+    
     for article in articles:
         article_data = article.to_dict()
-            
-        # 작성자의 uid를 auth에서 가져오기
-        try:
-            user = auth.get_user(user_id)
-            picture = user.photo_url
-            nickname = user.display_name
-        except Exception as e:
-            print("Error Occured!!", e)
-            picture = None
-            nickname = None
+        
         # 가져온 게시글에서 내용 뽑아내기
         article_item = {
             'uid': article.id,

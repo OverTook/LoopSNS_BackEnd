@@ -79,12 +79,12 @@ def add_article_like(user_id):
 
     except Exception as e:
         print(f"Exception: {e}")
-        response = {
+        return jsonify(response = {
             'success': False,
             'msg': str(e),
             'articles': []
-        }
-        return jsonify(response), 500
+        }), 500
+
 # 내가 좋아요 누른 게시글 목록 확인하는 부분
 @like_routes.route('/get_like_article_list', methods=['GET'])
 @validation_token()
@@ -105,7 +105,7 @@ def user_liked_article_list(user_id):
                 'articles': []
             }), 200
 
-        limit = 3  # 가져올 게시글 개수
+        limit = 20  # 가져올 게시글 개수
 
         query = db.collection('articles').where(FieldPath.document_id(), "in", liked_article_ids).order_by("time", direction=firestore.Query.DESCENDING)
 

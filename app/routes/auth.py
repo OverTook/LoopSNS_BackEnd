@@ -53,6 +53,7 @@ def login():
             
             #계정 기반으로 토큰 발행
             custom_token = create_custom_token(user.uid)      
+            print(custom_token)
             
             return jsonify({
                 'success': True, 
