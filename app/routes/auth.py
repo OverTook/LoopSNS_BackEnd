@@ -26,6 +26,7 @@ def login():
             nickname = token_info.get('name')
             
             email = token_info.get('email')
+            
         elif platform == 'kakao':
             #카카오 엑세스 토큰을 기반으로 이메일 추출
             user_info = get_kakao_user_info(token)
@@ -39,12 +40,9 @@ def login():
         
         if email:
             #유저를 로그인/회원가입 진행
-            user = get_or_create_user(email)
-            user = auth.update_user(
-                user.uid,
-                display_name=nickname,
-                photo_url=picture
-            )
+            user = get_or_create_user(email, platform, nickname, picture)
+            
+            
             #doc_ref = db.collection('users').document(c_user)
             #doc_ref.set({
             #    'nickname': nickname,

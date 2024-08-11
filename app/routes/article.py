@@ -37,6 +37,21 @@ def create_article(user_id):
         contents = request.form.get('contents')
         lat = request.form.get('lat')
         lng = request.form.get('lng')
+        print(lat, lng)
+        
+
+        if (all(len(keyword) == 0 for keyword in keywords) or
+            any(len(keyword) > 20 for keyword in keywords)):
+            return jsonify({
+                "success": False, 
+                "msg": "add_article, plz write one keywords",
+                'article': "no data"
+            }), 400
+
+
+        
+        #print(f"파일 이름: {images.filename}")
+        #print(f"파일 타입: {images.content_type}")
 
         #UTC 저장
         time_utc = datetime.now(pytz.timezone('UTC'))
@@ -64,19 +79,23 @@ def create_article(user_id):
         doc_data = {
             'cat1': cat1,
             'cat2': cat2,
-            'keywords': keywords,
             'contents': contents,
-            'time': time_utc,
+            'image_urls': image_urls, 
+            'keywords': keywords,
             'lat': lat,
             'lng': lng,
-            'image_urls': image_urls, 
+            'time': time_utc,
             'user_id': user_id
         }
         
         _, city_ref = db.collection('articles').add(doc_data)
         doc_data['uid'] = city_ref.id
-        doc_data['writer'] = nickname
+        doc_data['comment_counts'] = 0
+        doc_data['like_count'] = 0
         doc_data['user_img'] = picture
+        doc_data['writer'] = nickname
+        doc_data['is_liked'] = False
+        doc_data['can_delete'] = True
         doc_data['time'] = time_utc.strftime('%Y-%m-%d %H:%M')
         
         return jsonify({
@@ -115,14 +134,30 @@ def delete_article(article_id, user_id):
             'msg': '글쓴이가 아님'
         }), 403
     
-    # 댓글 서브컬렉션 삭제
+    # 댓글 서브컬렉션과 그 하위의 sub_comments 삭제
     comments_ref = doc_ref.collection('comments')
     comments = comments_ref.stream()
-    
+
     for comment in comments:
+        # sub_comments 서브컬렉션 삭제
+        sub_comments_ref = comment.reference.collection('sub_comments')
+        sub_comments = sub_comments_ref.stream()
+        for sub_comment in sub_comments:
+            sub_comment.reference.delete()
+
+        # 댓글 삭제
         comment.reference.delete()
 
+    # liked_users 서브컬렉션 삭제
+    liked_users_ref = doc_ref.collection('liked_users')
+    liked_users = liked_users_ref.stream()
+
+    for liked_user in liked_users:
+        liked_user.reference.delete()
+
+    # 최종적으로 게시글 삭제
     doc_ref.delete()
+
     return jsonify({
         'success': True, 
         'msg': '게시글 삭제 완료'
@@ -251,6 +286,7 @@ def get_user_article_list(user_id):
             'time': article_data.get('time', None).strftime("%Y-%m-%d %H:%M"),
             'like_count': article_data.get('like_count', 0),
             'image_urls': article_data.get('image_urls', []),
+            'comment_counts': article_data.get('comment_counts', 0),
             'user_img': picture,
             'writer': nickname,
             'can_delete': True
@@ -269,3 +305,5 @@ def get_user_article_list(user_id):
         'msg': '사용자가 작성한 게시글 목록 반환',
         'articles': articles_list
     })
+
+

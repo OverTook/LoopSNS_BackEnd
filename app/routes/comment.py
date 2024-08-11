@@ -60,14 +60,16 @@ def create_comment(user_id):
         def send_notifications():
             try:
                 notification_body = {
+                    'user_id': article_data['user_id'],
                     'article_id': article_id,
                     'comment_id': comment_ref.id,
-                    'user_id': user_id,
+                    'sub_comment_id': '',
                     'writer': nickname,
                     'user_img': picture,
                     'contents': contents,
                     'time': time_utc.strftime('%Y-%m-%d %H:%M')
                 }
+                print(notification_body)
 
                 # 게시글 작성자에게 notification
                 if user_id != article_data['user_id']:
@@ -78,6 +80,17 @@ def create_comment(user_id):
                             send_push_notification(fcm_token, "comment", notification_body)
                         except Exception as e:
                             print("Notification Error:", e)
+
+                            user_ref = db.collection('users').document(article_data['user_id'])
+                            user_doc = user_ref.get()
+
+                            user_data = user_doc.to_dict()
+                            fcm_tokens = user_data.get('fcm_tokens', [])
+
+                            if fcm_token in fcm_tokens:
+                                fcm_tokens.remove(fcm_token)
+                                user_ref.update({'fcm_tokens': fcm_tokens})
+                            
             except Exception as e:
                 print("Notification Exception:", e)
         
@@ -148,29 +161,75 @@ def create_sub_comment(user_id):
         
         # 비동기 알림 전송 함수
         def send_notifications():
-            try:
-                notification_body = {
-                    'article_id': article_id,
-                    'comment_id': comment_id,
-                    'sub_comment_id': sub_comment_ref.id,
-                    'user_id': user_id,
-                    'writer': nickname,
-                    'user_img': picture,
-                    'contents': contents,
-                    'time': time_utc.strftime('%Y-%m-%d %H:%M')
-                }
+            notified_users = set()  # 이미 알림을 보낸 유저들을 추적
+            notification_body = {
+                'user_id': comment_data['user_id'],
+                'article_id': article_id,
+                'comment_id': comment_id,
+                'sub_comment_id': sub_comment_ref.id,
+                'writer': nickname,
+                'user_img': picture,
+                'contents': contents,
+                'time': time_utc.strftime('%Y-%m-%d %H:%M')
+            }
+            # 댓글 작성자에게 notification
+            if user_id != comment_data['user_id']:
+                notified_users.add(comment_data['user_id'])
+                writer_ref = db.collection('users').document(comment_data['user_id'])
+                writer_data = writer_ref.get().to_dict()
+                for fcm_token in writer_data['fcm_tokens']:
+                    try:
+                        send_push_notification(fcm_token, "comment", notification_body)
+                    except Exception as e:
+                        print("Notification Error:", e)
 
-                # 댓글 작성자에게 notification
-                if user_id != comment_data['user_id']:
-                    writer_ref = db.collection('users').document(comment_data['user_id'])
-                    writer_data = writer_ref.get().to_dict()
-                    for fcm_token in writer_data['fcm_tokens']:
+                        user_ref = db.collection('users').document(comment_data['user_id'])
+                        user_doc = user_ref.get()
+
+                        user_data = user_doc.to_dict()
+                        fcm_tokens = user_data.get('fcm_tokens', [])
+
+                        if fcm_token in fcm_tokens:
+                            fcm_tokens.remove(fcm_token)
+                            user_ref.update({'fcm_tokens': fcm_tokens})
+                
+            
+            # 다른 대댓글 작성자들에게 알림
+            sub_comments = comment_ref.collection('sub_comments').stream()
+            
+
+            for sub_comment in sub_comments:
+                sub_comment_data = sub_comment.to_dict()
+                sub_comment_user_id = sub_comment_data['user_id']
+
+                if sub_comment_user_id != user_id and sub_comment_user_id not in notified_users:
+                    notified_users.add(sub_comment_user_id)
+
+                    user_ref = db.collection('users').document(sub_comment_user_id)
+                    user_data = user_ref.get().to_dict()
+
+                    for fcm_token in user_data['fcm_tokens']:
                         try:
+                            notification_body = {
+                                'user_id': sub_comment_user_id,
+                                'article_id': article_id,
+                                'comment_id': comment_id,
+                                'sub_comment_id': sub_comment_ref.id,
+                                'writer': nickname,
+                                'user_img': picture,
+                                'contents': contents,
+                                'time': time_utc.strftime('%Y-%m-%d %H:%M')
+                            }
                             send_push_notification(fcm_token, "comment", notification_body)
                         except Exception as e:
                             print("Notification Error:", e)
-            except Exception as e:
-                print("Notification Exception:", e)
+
+                            if fcm_token in user_data['fcm_tokens']:
+                                user_data['fcm_tokens'].remove(fcm_token)
+                                user_ref.update({'fcm_tokens': user_data['fcm_tokens']})
+
+            #except Exception as e:
+            #    print("Notification Exception:", e)
         
         # 비동기로 알림 전송
         with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -391,5 +450,77 @@ def get_sub_comment_list(user_id):
         'comments': sub_comment_items
     }), 200
 
+# 특정 댓글 불러오기 엔드포인트
+@comment_routes.route("/get_comment")
+@validation_token()
+def get_comment(user_id):
+    article_id = request.args.get('uid')
+    comment_id = request.args.get('comment_id')
+    
+    article_ref = db.collection('articles').document(article_id)
+    comment_ref = article_ref.collection('comments').document(comment_id)
+    comment_data = comment_ref.get().to_dict()
 
+    try:
+        user = auth.get_user(comment_data['user_id'])
+        picture = user.photo_url
+        nickname = user.display_name
+    except Exception as e:
+        print("Error Occurred!!", e)
+        picture = None
+        nickname = None
 
+    comment_item = {
+        'time': comment_data.get('time').strftime('%Y-%m-%d %H:%M'),
+        'comment_id': comment_ref.id,
+        'contents': comment_data.get('contents', ''),
+        'user_img': picture,
+        'writer': nickname,
+        'is_deleted': comment_data.get('is_deleted', False),
+        'sub_comment_counts': comment_data.get('sub_comment_counts', 0),
+        'can_delete': True if user_id == comment_data['user_id'] else False
+    }
+
+    return jsonify({
+        'success': True,
+        'msg': '댓글 반환에 성공했습니다.',
+        'comment': comment_item
+    }), 200
+
+# 특정 댓글 불러오기 엔드포인트
+@comment_routes.route("/get_sub_comment")
+@validation_token()
+def get_sub_comment(user_id):
+    article_id = request.args.get('uid')
+    comment_id = request.args.get('comment_id')
+    sub_comment_id = request.args.get('sub_comment_id')
+    
+    article_ref = db.collection('articles').document(article_id)
+    comment_ref = article_ref.collection('comments').document(comment_id)
+    sub_comment_ref = comment_ref.collection('sub_comments').document(sub_comment_id)
+    sub_comment_data = sub_comment_ref.get().to_dict()
+
+    try:
+        user = auth.get_user(sub_comment_data['user_id'])
+        picture = user.photo_url
+        nickname = user.display_name
+    except Exception as e:
+        print("Error Occurred!!", e)
+        picture = None
+        nickname = None
+
+    sub_comment_item = {
+        'time': sub_comment_data.get('time').strftime('%Y-%m-%d %H:%M'),
+        'comment_id': sub_comment_ref.id,
+        'contents': sub_comment_data.get('contents', ''),
+        'user_img': picture,
+        'writer': nickname,
+        'is_deleted': sub_comment_data.get('is_deleted', False),
+        'can_delete': True if user_id == sub_comment_data['user_id'] else False
+    }
+
+    return jsonify({
+        'success': True,
+        'msg': '댓글 반환에 성공했습니다.',
+        'comment': sub_comment_item
+    }), 200

@@ -14,13 +14,19 @@ def get_google_token_info(id_token):
     response.raise_for_status()
     return response.json()
 
-def get_or_create_user(email):
+def get_or_create_user(email, platform, nickname, picture):
     try:
         #이메일 기반으로 유저 조회
         user = auth.get_user_by_email(email)
     except auth.UserNotFoundError:
         #유저 존재 안하면 계정 생성
         user = auth.create_user(email=email)
+        auth.set_custom_user_claims(user.uid, {'platform': platform})
+        user = auth.update_user(
+            user.uid,
+            display_name=nickname,
+            photo_url=picture
+        )
     return user
 
 def create_custom_token(uid):

@@ -31,6 +31,8 @@ from app.routes.like import like_routes
 from app.routes.marker import marker_routes
 from app.routes.fcm_token import fcm_token_routes
 from app.routes.search import search_routes
+from app.routes.terms import terms_routes
+from app.routes.user import user_routes
 
 app.register_blueprint(article_routes)
 app.register_blueprint(auth_routes)
@@ -40,3 +42,6 @@ app.register_blueprint(like_routes)
 app.register_blueprint(marker_routes)
 app.register_blueprint(fcm_token_routes)
 app.register_blueprint(search_routes)
+app.register_blueprint(terms_routes)
+app.register_blueprint(user_routes)
+
