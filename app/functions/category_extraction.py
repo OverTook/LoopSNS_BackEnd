@@ -1,7 +1,7 @@
 import re
 import base64
+import vertexai
 from vertexai.generative_models import GenerativeModel, Part
-import google.generativeai as genai
 from config import googleapi
 
 #카테고리 파트    
@@ -292,12 +292,10 @@ def process_image_and_text(image_bytes, text_content=""):
             
             답변은 반드시 한국어로 답변을 해주세요.
             '''
-
-
-
+    
     # 모델
-    genai.configure(api_key=googleapi.GOOGLEMAPS_KEY)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    vertexai.init(project=googleapi.PROJECT_ID, location="us-central1")
+    model = GenerativeModel('gemini-1.5-flash')
     
     '''
     max_output_tokens = 생성할 답변의 최대 토큰 수
