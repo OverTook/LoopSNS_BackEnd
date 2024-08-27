@@ -5,6 +5,9 @@ from google.cloud.firestore_v1.base_query import FieldFilter
 import re
 from firebase_admin import auth
 import time  # time 모듈 추가
+import os
+from config import BASE_DIR
+import csv
 
 # 검색 블루프린트 작성
 search_routes = Blueprint('search', __name__)
@@ -39,9 +42,9 @@ def search():
     query = articles_ref
     # 카테고리 필터링
     if c1:
-        query = articles_ref.where(field_path='cat1', op_string='==', value=c1)
+        query = articles_ref.where(field_path='intention', op_string='==', value=c1)
     if c2:
-        query = articles_ref.where(field_path='cat2', op_string='==', value=c2)
+        query = articles_ref.where(field_path='subject', op_string='==', value=c2)
 
     # 검색어 필터링
     articles = []
@@ -63,8 +66,8 @@ def search():
                             articles.append({
                                 'uid': article.id,
                                 'contents': article_dict.get('contents', ''),
-                                'cat1': article_dict.get('cat1', ''),
-                                'cat2': article_dict.get('cat2', ''),
+                                'intention': article_dict.get('intention', ''),
+                                'subject': article_dict.get('subject', ''),
                                 'keywords': article_dict.get('keywords', []),
                                 'time': article_dict.get('time', None).strftime("%Y-%m-%d %H:%M"),
                                 'comment_counts': article_dict.get('comment_counts', 0),
@@ -93,8 +96,8 @@ def search():
                 article_item = {
                     'uid': article.id,
                     'contents': article_dict.get('contents', ''),
-                    'cat1': article_dict.get('cat1', ''),
-                    'cat2': article_dict.get('cat2', ''),
+                    'intention': article_dict.get('intention', ''),
+                    'subject': article_dict.get('subject', ''),
                     'keywords': article_dict.get('keywords', []),
                     'time': article_dict.get('time', None).strftime("%Y-%m-%d %H:%M"),
                     'comment_counts': article_dict.get('comment_counts', 0),
@@ -126,3 +129,65 @@ def search():
         'msg': '검색 목록 반환',
         'articles': articles
     })
+
+
+
+# 검색 버튼을 눌렀을 때 의도와 주제 리스트를 보내주는 부분
+@search_routes.route('/intention_subject', methods=['GET'])
+def intention_subject():
+    language = str(request.args.get('language', 'ko'))
+    
+    intention_path = os.path.join(BASE_DIR, 'data', 'csv_data', 'intention_data.csv') #'/home/students/cs/rhfhfhd/LoopSNS_BackEnd/data/csv_data/intention_data.csv'     
+    subject_path = os.path.join(BASE_DIR, 'data', 'csv_data', 'subject_data.csv') #'/home/students/cs/rhfhfhd/LoopSNS_BackEnd/data/csv_data/subject_data.csv'
+    print(intention_path)
+    print(subject_path)
+    
+    # 데이터를 저장할 리스트
+    intention_data = []
+    subject_data = []
+    
+    # 리스트 시작에 전체 의도, 전체 주제 추가
+    if language == 'ko':
+        intention_data.append('전체 의도')
+        subject_data.append('전체 주제')
+    else:
+        intention_data.append('All Intentions')
+        subject_data.append('All Subjects')
+    
+    # 의도 CSV 파일을 열고 처리
+    with open(intention_path, 'r', encoding='utf-8') as f:
+        reader = csv.reader(f)
+        for row in reader:
+            # 첫 번째 행은 헤더이므로 건너뜀
+            if row == ['kor-name', 'eng-name']:
+                continue
+            
+            # 언어에 따라 적절한 값 추가
+            if language == 'ko':
+                intention_data.append(row[0])
+            else:
+                intention_data.append(row[1])
+                
+    
+    # 주제 CSV 파일을 열고 처리
+    with open(subject_path, 'r', encoding='utf-8') as f:
+        reader = csv.reader(f)
+        for row in reader:
+            # 첫 번째 행은 헤더이므로 건너뜀
+            if row == ['kor-name', 'eng-name']:
+                continue
+            
+            # 언어에 따라 적절한 값 추가
+            if language == 'ko':
+                subject_data.append(row[0])
+            else:
+                subject_data.append(row[1])
+   
+    print(intention_data)
+    print(subject_data)
+    return jsonify({
+        'success': True, 
+        'msg': '의도, 주제 리스트를 전달했습니다.', 
+        'intentions': intention_data,
+        'subjects': subject_data
+    }), 200 

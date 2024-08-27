@@ -19,12 +19,10 @@ def get_category():
         
     if len(contents.strip()) < 16:  # 내용이 15자 이하인지 판단
         return jsonify({"success": False, "msg": "get category", "categories": [], "keywords": []}), 405
-            
-        
+    
     print(images)
     print(contents)
-        
-        
+    
     #한글 게시글인지 영어 게시글인지 파악
     korean_count = 0
     english_count = 0
@@ -40,16 +38,12 @@ def get_category():
     if images:  # 이미지가 있는 경우에만 처리
         for image in images:
             image_bytes = image.read()
-            #mosaic_image_bytes = mosaic(image_bytes)
-            mosaic_image_bytes = image_bytes
-
-            image_url = mosaic_image_bytes
-            image_urls.append(image_url)
+            image_urls.append(image_bytes)
     else:
         image_bytes = None
+
     result_text = process_image_and_text(image_bytes, contents if contents else " ")
-        
-        
+            
     print(result_text)
         
     msg = contains_bad_content(result_text)
@@ -81,9 +75,6 @@ def get_category():
         print(k4)
 
         return jsonify({"success": True, "msg": "get category", "categories": [c1, c2], "keywords": [k1, k2, k3, k4]})
-
-    
-    
 
 def contains_bad_content(text):
     bad_words = ["폭력", "폭행", "폭력적", "살인", "자살", "성적", "성폭력", "성희롱", "욕설", "비속어", "부적절", "공격적"]

@@ -12,9 +12,11 @@
 
 # import libraries
 from app import db, bucket
+from app.functions import address
+from app.functions.image_processing import mosaic
 from app.utils.decorators import *
 from app.utils.exceptions import *
-from firebase_admin import firestore
+from google.cloud.firestore import GeoPoint, Query
 from flask import Blueprint, request, jsonify
 from datetime import datetime
 import uuid
@@ -31,14 +33,15 @@ def create_article(user_id):
     try:
         images = request.files.getlist('images')
         cats = request.form.getlist('categories')
-        cat1 = cats[0]
-        cat2 = cats[1]
+        intention = cats[0]
+        subject = cats[1]
         keywords = request.form.getlist('keywords')
         contents = request.form.get('contents')
-        lat = request.form.get('lat')
-        lng = request.form.get('lng')
-        print(lat, lng)
-        
+        lat = float(request.form.get('lat'))
+        lng = float(request.form.get('lng'))
+        geo_point = GeoPoint(lat, lng)
+        addr = address.get_data(lat, lng)               # 위경도 값으로 주소 정보를 딕셔너리로 받아옴
+        time_utc = datetime.now(pytz.timezone('UTC'))   # UTC 저장
 
         if (all(len(keyword) == 0 for keyword in keywords) or
             any(len(keyword) > 20 for keyword in keywords)):
@@ -47,22 +50,27 @@ def create_article(user_id):
                 "msg": "add_article, plz write one keywords",
                 'article': "no data"
             }), 400
-
-
-        
-        #print(f"파일 이름: {images.filename}")
-        #print(f"파일 타입: {images.content_type}")
-
-        #UTC 저장
-        time_utc = datetime.now(pytz.timezone('UTC'))
         
         image_urls = []
         for image in images:
             if image:
+                # 이미지 바이트 읽기
+                image_bytes = image.read()
+                
+                # 모자이크 처리
+                mosaic_image_bytes = mosaic(image_bytes)
+                
+                # 모자이크 처리된 이미지 바이트를 사용하여 업로드
                 image_filename = f'{uuid.uuid4()}.jpg'
                 blob = bucket.blob(f'images/{image_filename}')
-                # https://stackoverflow.com/questions/65616314/how-to-upload-an-image-to-google-firestore-bucket 참고
-                blob.upload_from_file(image.stream, content_type=image.content_type)
+                
+                if mosaic_image_bytes is not None:
+                    # 모자이크 처리된 이미지를 Firebase Storage에 업로드
+                    blob.upload_from_string(mosaic_image_bytes, content_type='image/jpeg')
+                else:
+                    # 모자이크 처리되지 않은 경우 원본 이미지 업로드
+                    blob.upload_from_string(image_bytes, content_type='image/jpeg')
+                
                 blob.make_public()
                 image_urls.append(blob.public_url)
                 
@@ -77,18 +85,24 @@ def create_article(user_id):
             nickname = None
         
         doc_data = {
-            'cat1': cat1,
-            'cat2': cat2,
+            'intention': intention,
+            'subject': subject,
             'contents': contents,
-            'image_urls': image_urls, 
+            'image_urls': image_urls,
             'keywords': keywords,
-            'lat': lat,
-            'lng': lng,
+            'latlng': geo_point,  # GeoPoint로 저장
+            'sido': addr['sido'],
+            'sigungu': addr['sigungu'],
+            'eupmyeondong': addr['eupmyeondong'],
+            'address': addr['address'],
             'time': time_utc,
             'user_id': user_id
         }
         
+        # Firestore에 문서 추가
         _, city_ref = db.collection('articles').add(doc_data)
+
+        del doc_data['latlng']
         doc_data['uid'] = city_ref.id
         doc_data['comment_counts'] = 0
         doc_data['like_count'] = 0
@@ -210,8 +224,8 @@ def get_article_detail(user_id):
     article_item = {
         'uid': article_id,
         'contents': article_data.get('contents', ''),
-        'cat1': article_data.get('cat1', ''),
-        'cat2': article_data.get('cat2', ''),
+        'intention': article_data.get('intention', ''),
+        'subject': article_data.get('subject', ''),
         'keywords': article_data.get('keywords', []),
         'time': article_data.get('time').strftime('%Y-%m-%d %H:%M'),
         'comment_counts': article_data.get('comment_counts', 0),
@@ -237,7 +251,7 @@ def get_user_article_list(user_id):
     last_article_id = request.args.get('last_article_id')
     # 최근 순으로 불러오도록 order_by 활용 .order_by('time', direction=firestore.Query.DESCENDING) 여기 부분 추가
     # 근데 지금 처음에 3개에 대해서만 진행됨.
-    articles_ref = db.collection('articles').order_by("time", direction=firestore.Query.DESCENDING)
+    articles_ref = db.collection('articles').order_by("time", direction=Query.DESCENDING)
     query = articles_ref.where('user_id', '==', user_id)
     
     # 차후 20으로 수정
@@ -280,8 +294,8 @@ def get_user_article_list(user_id):
         article_item = {
             'uid': article.id,
             'contents': article_data.get('contents', ''),
-            'cat1': article_data.get('cat1', ''),
-            'cat2': article_data.get('cat2', ''),
+            'intention': article_data.get('intention', ''),
+            'subject': article_data.get('subject', ''),
             'keywords': article_data.get('keywords', []),
             'time': article_data.get('time', None).strftime("%Y-%m-%d %H:%M"),
             'like_count': article_data.get('like_count', 0),

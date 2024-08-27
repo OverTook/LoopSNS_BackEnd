@@ -179,8 +179,8 @@ def user_liked_article_list(user_id):
                 article_item = {
                     'uid': article_id,
                     'contents': article_data.get('contents', ''),
-                    'cat1': article_data.get('cat1', ''),
-                    'cat2': article_data.get('cat2', ''),
+                    'intention': article_data.get('intention', ''),
+                    'subject': article_data.get('subject', ''),
                     'keywords': article_data.get('keywords', []),
                     'time': article_data.get('time', None).strftime("%Y-%m-%d %H:%M"),
                     'comment_counts': article_data.get('comment_counts', 0),

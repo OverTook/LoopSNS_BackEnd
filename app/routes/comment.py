@@ -6,7 +6,6 @@ from firebase_admin.firestore import firestore
 from flask import Blueprint, request, jsonify
 from datetime import datetime
 import pytz
-import time
 
 # 댓글 작성 블루프린트 작성
 comment_routes = Blueprint('comment', __name__)
